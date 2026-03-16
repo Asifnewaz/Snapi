@@ -7,6 +7,7 @@
 
 import Foundation
 import CryptoKit
+import UIKit
 
 // MARK: - RequestInterceptor Protocol
 

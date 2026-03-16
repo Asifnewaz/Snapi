@@ -186,7 +186,7 @@ public extension APIClient {
     ///   - cachePolicy: Cache read/write strategy. Default: `.returnCacheIfValid`.
     ///   - ttl: Time-to-live in seconds. Defaults to `ResponseCache.shared.defaultTTL`.
     ///   - completion: Delivered on main queue. May be called twice with `.returnCacheThenRefresh`.
-    func getCached<T: Decodable>(
+    func getCached<T: Codable>(
         path: String,
         queryParameters: [String: String]? = nil,
         headers: [String: String]? = nil,
@@ -225,7 +225,7 @@ public extension APIClient {
 
     // MARK: - Private
 
-    private func performFreshFetch<T: Decodable>(
+    private func performFreshFetch<T: Codable>(
         path: String,
         queryParameters: [String: String]?,
         headers: [String: String]?,
