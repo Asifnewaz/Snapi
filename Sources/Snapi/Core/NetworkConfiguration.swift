@@ -31,6 +31,7 @@ public final class NetworkConfiguration: NetworkConfigurationProtocol {
     /// UserDefaults / Keychain key for the persisted auth token.
     /// Override if your app uses a different key.
     public var tokenStorageKey: String = "com.networkingsdk.auth_token"
+    public var tokenHeaderKey: String = "com.networkingsdk.auth_token_header"
 
     /// Header name the token is injected into. Default: "Authorization".
     public var authorizationHeaderKey: String = "Authorization"
@@ -83,6 +84,14 @@ public final class NetworkConfiguration: NetworkConfigurationProtocol {
 
     // MARK: - Auth Token Management
 
+    public func setTokenHeader(_ tokenHeader: String) {
+        tokenStore.save(token: tokenHeader, forKey: tokenHeaderKey)
+    }
+    
+    public func getTokenHeader() -> String? {
+        return tokenStore.load(forKey: tokenHeaderKey)
+    }
+    
     /// Sets the auth token, injects it into every request header,
     /// and **persists it to storage** for the next app launch.
     ///
@@ -95,7 +104,10 @@ public final class NetworkConfiguration: NetworkConfigurationProtocol {
     /// // And it survives app restarts.
     /// ```
     public func setAuthToken(_ token: String) {
-        let headerValue = token.hasPrefix("Bearer ") ? token : "Bearer \(token)"
+        var headerValue = token
+        if let tokenHeader = getTokenHeader() {
+            headerValue = token.hasPrefix("\(tokenHeader) ") ? token : "\(tokenHeader) \(token)"
+        }
         defaultHeaders[authorizationHeaderKey] = headerValue
         tokenStore.save(token: token, forKey: tokenStorageKey)
     }
@@ -143,7 +155,10 @@ public final class NetworkConfiguration: NetworkConfigurationProtocol {
         guard let saved = tokenStore.load(forKey: tokenStorageKey) else {
             return      // No token saved — user not logged in yet
         }
-        let headerValue = saved.hasPrefix("Bearer ") ? saved : "Bearer \(saved)"
+        var headerValue = saved
+        if let tokenHeader = getTokenHeader() {
+            headerValue = saved.hasPrefix("\(tokenHeader) ") ? saved : "\(tokenHeader) \(saved)"
+        }
         defaultHeaders[authorizationHeaderKey] = headerValue
     }
 
