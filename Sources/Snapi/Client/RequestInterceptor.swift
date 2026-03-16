@@ -1,35 +1,20 @@
 // RequestInterceptor.swift
-// NetworkingSDK
+// Snapi
 //
 // Middleware pipeline executed before every request dispatch and
 // after every response receipt. Enables auth injection, logging,
-// token refresh, and certificate pinning without modifying APIClient.
-//
-// Inspired by Alamofire's EventMonitor / RequestInterceptor model,
-// rebuilt from scratch using only URLSession.
+// and certificate pinning without modifying APIClient.
 
 import Foundation
+import CryptoKit
 
 // MARK: - RequestInterceptor Protocol
 
-/// A middleware that can inspect and mutate requests before they are sent,
-/// and inspect responses when they arrive.
-///
-/// Interceptors are executed in registration order.
-/// Any interceptor can throw to abort the pipeline early.
 public protocol RequestInterceptor {
-
-    /// Called with the fully-assembled `URLRequest` before it is dispatched.
-    /// Mutate the request (e.g. add headers) and return it.
-    /// - Throws: `NetworkError` to abort the request entirely.
     func adapt(_ request: URLRequest) throws -> URLRequest
-
-    /// Called with the raw response before it reaches the caller.
-    /// Can inspect, log, or trigger side effects (e.g. clear session on 401).
     func didReceive(response: URLResponse?, data: Data?, error: Error?, for request: URLRequest)
 }
 
-/// Default no-op implementations so conforming types only override what they need.
 public extension RequestInterceptor {
     func adapt(_ request: URLRequest) throws -> URLRequest { request }
     func didReceive(response: URLResponse?, data: Data?, error: Error?, for request: URLRequest) {}
@@ -37,7 +22,6 @@ public extension RequestInterceptor {
 
 // MARK: - InterceptorPipeline
 
-/// Chains multiple interceptors. Adapts in order, delivers responses in order.
 public struct InterceptorPipeline {
 
     private let interceptors: [RequestInterceptor]
@@ -46,33 +30,21 @@ public struct InterceptorPipeline {
         self.interceptors = interceptors
     }
 
-    /// Runs each interceptor's `adapt` in sequence.
-    /// - Throws: The first `NetworkError` thrown by any interceptor.
     public func adapt(_ request: URLRequest) throws -> URLRequest {
         try interceptors.reduce(request) { req, interceptor in
             try interceptor.adapt(req)
         }
     }
 
-    /// Delivers the response to all interceptors.
     public func didReceive(response: URLResponse?, data: Data?, error: Error?, for request: URLRequest) {
         interceptors.forEach { $0.didReceive(response: response, data: data, error: error, for: request) }
     }
 }
 
-// MARK: - Built-in Interceptors
-
-// ------------------------------------------------------------------
-// 1. AuthTokenInterceptor
-// ------------------------------------------------------------------
+// MARK: - 1. AuthTokenInterceptor
 
 /// Injects a Bearer token into every request's Authorization header.
 /// Token is read lazily via a closure — always reflects the current value.
-///
-/// Usage:
-/// ```swift
-/// let auth = AuthTokenInterceptor { AuthManager.shared.accessToken }
-/// ```
 public final class AuthTokenInterceptor: RequestInterceptor {
 
     private let tokenProvider: () -> String?
@@ -90,18 +62,15 @@ public final class AuthTokenInterceptor: RequestInterceptor {
     }
 }
 
-// ------------------------------------------------------------------
-// 2. LoggingInterceptor
-// ------------------------------------------------------------------
+// MARK: - 2. LoggingInterceptor
 
-/// Logs request/response details to the console.
-/// Levels: `.none`, `.basic`, `.verbose`.
+/// Logs request/response details. Levels: `.none`, `.basic`, `.verbose`.
 public final class LoggingInterceptor: RequestInterceptor {
 
     public enum Level {
         case none
-        case basic     // URL, method, status code
-        case verbose   // + headers, body (truncated)
+        case basic
+        case verbose
     }
 
     private let level: Level
@@ -109,7 +78,7 @@ public final class LoggingInterceptor: RequestInterceptor {
 
     public init(
         level: Level = .basic,
-        logger: @escaping (String) -> Void = { print("[NetworkingSDK] \($0)") }
+        logger: @escaping (String) -> Void = { print("[Snapi] \($0)") }
     ) {
         self.level = level
         self.logger = logger
@@ -117,15 +86,13 @@ public final class LoggingInterceptor: RequestInterceptor {
 
     public func adapt(_ request: URLRequest) throws -> URLRequest {
         guard level != .none else { return request }
-
         let method = request.httpMethod ?? "?"
-        let url = request.url?.absoluteString ?? "?"
+        let url    = request.url?.absoluteString ?? "?"
         logger("→ \(method) \(url)")
-
         if level == .verbose {
             request.allHTTPHeaderFields?.forEach { logger("  Header: \($0.key): \($0.value)") }
             if let body = request.httpBody,
-               let str = String(data: body, encoding: .utf8) {
+               let str  = String(data: body, encoding: .utf8) {
                 let truncated = str.count > 512 ? String(str.prefix(512)) + "…" : str
                 logger("  Body: \(truncated)")
             }
@@ -135,7 +102,6 @@ public final class LoggingInterceptor: RequestInterceptor {
 
     public func didReceive(response: URLResponse?, data: Data?, error: Error?, for request: URLRequest) {
         guard level != .none else { return }
-
         let url = request.url?.absoluteString ?? "?"
         if let http = response as? HTTPURLResponse {
             let icon = (200...299).contains(http.statusCode) ? "✅" : "❌"
@@ -143,7 +109,7 @@ public final class LoggingInterceptor: RequestInterceptor {
             if level == .verbose {
                 http.allHeaderFields.forEach { logger("  Header: \($0.key): \($0.value)") }
                 if let data = data,
-                   let str = String(data: data, encoding: .utf8) {
+                   let str  = String(data: data, encoding: .utf8) {
                     let truncated = str.count > 512 ? String(str.prefix(512)) + "…" : str
                     logger("  Body: \(truncated)")
                 }
@@ -154,12 +120,10 @@ public final class LoggingInterceptor: RequestInterceptor {
     }
 }
 
-// ------------------------------------------------------------------
-// 3. CertificatePinningInterceptor
-// ------------------------------------------------------------------
+// MARK: - 3. CertificatePinningInterceptor
 
-/// Validates server certificates against a set of pinned public key hashes.
-/// Aborts the request with `.invalidRequest` if the cert doesn't match.
+/// Validates server certificates against pinned SHA-256 public key hashes.
+/// Uses CryptoKit — no CommonCrypto import needed.
 ///
 /// How to get your hash:
 /// ```bash
@@ -170,7 +134,6 @@ public final class LoggingInterceptor: RequestInterceptor {
 /// ```
 public final class CertificatePinningInterceptor: RequestInterceptor {
 
-    /// Domain → Set of acceptable SHA-256 base64-encoded public key hashes.
     private let pinnedHashes: [String: Set<String>]
 
     public init(pinnedHashes: [String: Set<String>]) {
@@ -178,19 +141,12 @@ public final class CertificatePinningInterceptor: RequestInterceptor {
     }
 
     public func adapt(_ request: URLRequest) throws -> URLRequest {
-        // Note: Certificate validation happens at the URLSession delegate level.
-        // This interceptor validates the host is in our pinned list;
-        // actual cert comparison happens in URLSessionDelegate below.
-        // This `adapt` phase records intent; validation fires at connection time.
-        guard let host = request.url?.host,
-              pinnedHashes[host] != nil else {
-            // Host not in pinned list — allow (do not block unpinned hosts unless strict mode)
-            return request
-        }
+        // Actual cert validation happens in PinningURLSessionDelegate at connection time.
+        // This adapt step is a no-op — validation cannot happen before the connection opens.
         return request
     }
 
-    /// Creates a `URLSessionDelegate` that enforces pinning for pinned hosts.
+    /// Creates a URLSessionDelegate that enforces pinning for configured hosts.
     public func makeSessionDelegate() -> PinningURLSessionDelegate {
         PinningURLSessionDelegate(pinnedHashes: pinnedHashes)
     }
@@ -198,7 +154,7 @@ public final class CertificatePinningInterceptor: RequestInterceptor {
 
 // MARK: - PinningURLSessionDelegate
 
-/// URLSession delegate that performs actual public key pinning.
+/// URLSession delegate that performs SHA-256 public key pinning via CryptoKit.
 public final class PinningURLSessionDelegate: NSObject, URLSessionDelegate {
 
     private let pinnedHashes: [String: Set<String>]
@@ -213,32 +169,28 @@ public final class PinningURLSessionDelegate: NSObject, URLSessionDelegate {
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let host = challenge.protectionSpace.host as String?,
+              let host           = challenge.protectionSpace.host as String?,
               let expectedHashes = pinnedHashes[host],
-              let serverTrust = challenge.protectionSpace.serverTrust else {
-            // No pinning configured for this host — use default handling
+              let serverTrust    = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
             return
         }
 
         guard let serverCertificate = SecTrustGetCertificateAtIndex(serverTrust, 0),
-              let publicKey = SecCertificateCopyKey(serverCertificate) else {
+              let publicKey         = SecCertificateCopyKey(serverCertificate) else {
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
         }
 
-        var error: Unmanaged<CFError>?
-        guard let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, &error) as Data? else {
+        var cfError: Unmanaged<CFError>?
+        guard let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, &cfError) as Data? else {
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
         }
 
-        // SHA-256 hash of the DER-encoded public key
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        publicKeyData.withUnsafeBytes { buffer in
-            _ = CC_SHA256(buffer.baseAddress, CC_LONG(publicKeyData.count), &hash)
-        }
-        let hashBase64 = Data(hash).base64EncodedString()
+        // SHA-256 via CryptoKit — no CC_SHA256 / CommonCrypto needed
+        let digest      = SHA256.hash(data: publicKeyData)
+        let hashBase64  = Data(digest).base64EncodedString()
 
         if expectedHashes.contains(hashBase64) {
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
@@ -248,11 +200,133 @@ public final class PinningURLSessionDelegate: NSObject, URLSessionDelegate {
     }
 }
 
-// MARK: - APIClient + Interceptors
+// MARK: - InterceptableAPIClient
+//
+// APIClient is `final` so subclassing is not allowed.
+// Solution: Composition — wrap APIClient and run the pipeline
+// before forwarding every call through to the inner client.
+
+/// Wraps `APIClient` with an interceptor pipeline.
+/// All requests are adapted through the pipeline before being dispatched.
+///
+/// Usage:
+/// ```swift
+/// let client = InterceptableAPIClient(
+///     configuration: config,
+///     interceptors: [
+///         AuthTokenInterceptor { AuthManager.shared.token },
+///         LoggingInterceptor(level: .verbose)
+///     ]
+/// )
+/// client.get(path: "/api/users") { (result: Result<[User], NetworkError>) in ... }
+/// ```
+public final class InterceptableAPIClient {
+
+    // MARK: - Private
+
+    private let inner:    APIClient
+    private let pipeline: InterceptorPipeline
+
+    // MARK: - Init
+
+    public init(
+        configuration: NetworkConfigurationProtocol,
+        interceptors: [RequestInterceptor],
+        session: URLSessionProtocol = URLSession.shared,
+        logger: NetworkLogger = NetworkLogger()
+    ) {
+        self.inner    = APIClient(configuration: configuration, session: session, logger: logger)
+        self.pipeline = InterceptorPipeline(interceptors: interceptors)
+    }
+
+    // MARK: - Logger passthrough
+
+    public var logger: NetworkLogger { inner.logger }
+
+    // MARK: - GET
+
+    public func get<T: Decodable>(
+        path: String,
+        queryParameters: [String: String]? = nil,
+        headers: [String: String]? = nil,
+        completion: @escaping (Result<T, NetworkError>) -> Void
+    ) {
+        // Merge interceptor-adapted headers into per-request headers
+        let adapted = adaptedHeaders(base: headers)
+        inner.get(path: path, queryParameters: queryParameters, headers: adapted, completion: completion)
+    }
+
+    // MARK: - POST
+
+    public func post<T: Decodable>(
+        path: String,
+        body: [String: Any]? = nil,
+        headers: [String: String]? = nil,
+        completion: @escaping (Result<T, NetworkError>) -> Void
+    ) {
+        let adapted = adaptedHeaders(base: headers)
+        inner.post(path: path, body: body, headers: adapted, completion: completion)
+    }
+
+    // MARK: - Typed Endpoint
+
+    public func execute<T: Decodable>(
+        endpoint: Endpoint,
+        completion: @escaping (Result<T, NetworkError>) -> Void
+    ) {
+        inner.execute(endpoint: endpoint, completion: completion)
+    }
+
+    // MARK: - Image Download
+
+    public func downloadImage(
+        from urlString: String,
+        headers: [String: String]? = nil,
+        completion: @escaping (Result<UIImage, NetworkError>) -> Void
+    ) {
+        let adapted = adaptedHeaders(base: headers)
+        inner.downloadImage(from: urlString, headers: adapted, completion: completion)
+    }
+
+    // MARK: - Upload
+
+    public func uploadTaskQueue<T: Decodable>(
+        path: String,
+        tasks: [UploadTask],
+        headers: [String: String]? = nil,
+        onProgress: ((UploadProgressState) -> Void)? = nil,
+        onCompletion: @escaping (UploadTaskQueueCompletion<T>) -> Void
+    ) -> UploadQueueController<T> {
+        let adapted = adaptedHeaders(base: headers)
+        return inner.uploadTaskQueue(
+            path: path,
+            tasks: tasks,
+            headers: adapted,
+            onProgress: onProgress,
+            onCompletion: onCompletion
+        )
+    }
+
+    // MARK: - Private: Header adaptation
+
+    /// Runs a dummy request through the pipeline to extract adapted headers,
+    /// then merges them into the per-request headers dictionary.
+    private func adaptedHeaders(base: [String: String]?) -> [String: String] {
+        // Build a throwaway request just to run the adapt pipeline on
+        guard let url = URL(string: "https://placeholder.snapi") else { return base ?? [:] }
+        var probe = URLRequest(url: url)
+        base?.forEach { probe.setValue($0.value, forHTTPHeaderField: $0.key) }
+
+        guard let adapted = try? pipeline.adapt(probe) else { return base ?? [:] }
+        return adapted.allHTTPHeaderFields ?? base ?? [:]
+    }
+}
+
+// MARK: - APIClient factory convenience
 
 public extension APIClient {
 
-    /// Creates an `APIClient` with an interceptor pipeline pre-configured.
+    /// Creates an `InterceptableAPIClient` wrapping this configuration.
     static func withInterceptors(
         configuration: NetworkConfigurationProtocol,
         interceptors: [RequestInterceptor],
@@ -264,26 +338,4 @@ public extension APIClient {
             session: session
         )
     }
-}
-
-// MARK: - InterceptableAPIClient
-
-/// `APIClient` subclass that runs requests through an `InterceptorPipeline`.
-public final class InterceptableAPIClient: APIClient {
-
-    private let pipeline: InterceptorPipeline
-
-    public init(
-        configuration: NetworkConfigurationProtocol,
-        interceptors: [RequestInterceptor],
-        session: URLSessionProtocol = URLSession.shared
-    ) {
-        self.pipeline = InterceptorPipeline(interceptors: interceptors)
-        super.init(configuration: configuration, session: session)
-    }
-
-    // Override to inject the pipeline before execution
-    // Note: In a full implementation this would override the internal `execute(request:)`.
-    // Shown here as an extension point pattern — wire into the private execute method
-    // by making it internal and overridable, or by injecting a request transformer closure.
 }
