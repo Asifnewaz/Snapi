@@ -10,12 +10,10 @@ let package = Package(
         .macOS(.v12)
     ],
     products: [
-        // Main SDK — import Snapi
         .library(
             name: "Snapi",
             targets: ["Snapi"]
         ),
-        // Test helpers — import SnapiTestSupport (test targets only)
         .library(
             name: "SnapiTestSupport",
             targets: ["SnapiTestSupport"]
@@ -24,14 +22,7 @@ let package = Package(
     targets: [
         .target(
             name: "Snapi",
-            path: "Sources/Snapi",
-            linkerSettings: [
-                .linkedFramework("Network"),
-                .linkedFramework("Combine")
-            ],
-            swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency")
-            ]
+            path: "Sources/Snapi"
         ),
         .target(
             name: "SnapiTestSupport",
