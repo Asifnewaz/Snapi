@@ -25,7 +25,7 @@ Add the package to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/yourorg/Snapi.git", from: "1.0.0")
+    .package(url: "https://github.com/Asifnewaz/Snapi.git", from: "1.0.0")
 ]
 ```
 
@@ -94,6 +94,21 @@ APIServiceManager.shared.configuration.currentToken   // String?
 ```
 
 The token is restored automatically on the next app launch — no extra code needed.
+
+### Custom Token Header Prefix
+
+By default the token is injected as `Bearer <token>`. To use a different prefix (e.g. `Token`, `Basic`):
+
+```swift
+// Set once at app launch, before calling setAuthToken
+APIServiceManager.shared.configuration.setTokenHeader("Token")
+
+// Then set the token as usual — it will be sent as "Token <value>"
+APIServiceManager.shared.configuration.setAuthToken(response.token)
+
+// Read back the stored header prefix
+let prefix = APIServiceManager.shared.configuration.getTokenHeader()   // "Token"
+```
 
 ### Switch to Keychain (recommended for production)
 
@@ -558,7 +573,7 @@ NetworkConfiguration   — baseURL, headers, token, timeout, cache policy
         │
     APIClient          — public interface: GET, POST, upload, download
         │
- URLSessionProtocol    — seam for injecting MockURLSession in tests
+ URLSessionProtocol    — seam for injecting MockURLSession in tests (api_dataTask / api_uploadTask)
         │
   ResponseDecoder      — JSON → Decodable, status code validation
 ```
