@@ -59,7 +59,7 @@ public final class MockURLSession: URLSessionProtocol {
 
     // MARK: - URLSessionProtocol
 
-    public func dataTask(
+    public func api_dataTask(
         with request: URLRequest,
         completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void
     ) -> URLSessionDataTaskProtocol {
@@ -80,7 +80,7 @@ public final class MockURLSession: URLSessionProtocol {
         return task
     }
 
-    public func uploadTask(
+    public func api_uploadTask(
         with request: URLRequest,
         from bodyData: Data,
         completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void

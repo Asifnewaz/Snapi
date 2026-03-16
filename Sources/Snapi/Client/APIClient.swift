@@ -170,7 +170,7 @@ public final class APIClient: APIClientProtocol {
         let startTime = Date()
         // ─────────────────────────────────────────────────────────────
 
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
+        let task = session.api_dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
 
             // ── Log the incoming response ─────────────────────────────
@@ -293,7 +293,7 @@ public final class APIClient: APIClientProtocol {
         logger.logRequest(request)
         let startTime = Date()
 
-        let uploadTask = session.uploadTask(with: request, from: bodyData) { [weak self] data, response, error in
+        let uploadTask = session.api_uploadTask(with: request, from: bodyData) { [weak self] data, response, error in
             guard let self = self else { return }
 
             let duration = Date().timeIntervalSince(startTime)

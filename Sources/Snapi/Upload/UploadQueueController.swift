@@ -330,7 +330,7 @@ public extension APIClient {
         let startTime = Date()
 
         // ── Execute ────────────────────────────────────────────────────
-        let task = session.uploadTask(with: request, from: bodyData) { [weak self] data, response, err in
+        let task = session.api_uploadTask(with: request, from: bodyData) { [weak self] data, response, err in
             guard let self = self else { return }
 
             self.logger.logResponse(for: request, response: response,
@@ -540,7 +540,7 @@ public extension APIClient {
         let startTime = Date()
 
         // ── Execute ────────────────────────────────────────────────────
-        let uploadTask = session.uploadTask(with: request, from: bodyData) { [weak self] data, response, err in
+        let uploadTask = session.api_uploadTask(with: request, from: bodyData) { [weak self] data, response, err in
             guard let self = self else { return }
 
             self.logger.logResponse(for: request, response: response,

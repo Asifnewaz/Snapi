@@ -11,13 +11,13 @@ import Foundation
 public protocol URLSessionProtocol {
 
     /// Mirrors URLSession.data(for:delegate:) — completion-handler variant for broad iOS support.
-    func dataTask(
+    func api_dataTask(
         with request: URLRequest,
         completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void
     ) -> URLSessionDataTaskProtocol
 
     /// Used for upload tasks (multipart, file upload).
-    func uploadTask(
+    func api_uploadTask(
         with request: URLRequest,
         from bodyData: Data,
         completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void
@@ -40,14 +40,14 @@ public protocol URLSessionUploadTaskProtocol {
 
 extension URLSession: URLSessionProtocol {
 
-    public func dataTask(
+    public func api_dataTask(
         with request: URLRequest,
         completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void
     ) -> URLSessionDataTaskProtocol {
         return (dataTask(with: request, completionHandler: completionHandler) as URLSessionDataTask)
     }
 
-    public func uploadTask(
+    public func api_uploadTask(
         with request: URLRequest,
         from bodyData: Data,
         completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void

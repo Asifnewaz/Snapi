@@ -67,7 +67,7 @@ public final class ImageDownloader: ImageDownloaderProtocol {
         headers?.forEach { merged[$0.key] = $0.value }
         request.allHTTPHeaderFields = merged
 
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
+        let task = session.api_dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
 
             if let error = error {
