@@ -405,7 +405,7 @@ public extension APIClient {
         _runTaskQueue(
             controller: controller,
             remaining: tasks,
-            accumulated: [],
+            accumulated: [],  // [UploadTaskResult<T>]
             onCompletion: onCompletion
         )
         return controller
@@ -416,7 +416,7 @@ public extension APIClient {
     private func _runTaskQueue<T: Decodable>(
         controller: UploadQueueController<T>,
         remaining: [UploadTask],
-        accumulated: [Result<T, NetworkError>],
+        accumulated: [UploadTaskResult<T>],
         onCompletion: @escaping (UploadTaskQueueCompletion<T>) -> Void
     ) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -433,7 +433,7 @@ public extension APIClient {
     private func __runTaskQueue<T: Decodable>(
         controller: UploadQueueController<T>,
         remaining: [UploadTask],
-        accumulated: [Result<T, NetworkError>],
+        accumulated: [UploadTaskResult<T>],
         onCompletion: @escaping (UploadTaskQueueCompletion<T>) -> Void
     ) {
         // ── Check stop flag before each new file ───────────────────────
@@ -447,7 +447,7 @@ public extension APIClient {
             let taskReason: UploadTaskQueueCompletion<T>.StopReason = reason == .cancelled ? .cancelled : .paused
             DispatchQueue.main.async {
                 onCompletion(UploadTaskQueueCompletion(
-                    attempted: UploadBatchResult(results: accumulated),
+                    attemptedTasks: accumulated,
                     remainingTasks: remaining,
                     reason: taskReason
                 ))
@@ -460,7 +460,7 @@ public extension APIClient {
             controller.setCompleted()
             DispatchQueue.main.async {
                 onCompletion(UploadTaskQueueCompletion(
-                    attempted: UploadBatchResult(results: accumulated),
+                    attemptedTasks: accumulated,
                     remainingTasks: [],
                     reason: .finished
                 ))
@@ -480,13 +480,13 @@ public extension APIClient {
         } catch let e as NetworkError {
             controller.incrementCompleted()
             __runTaskQueue(controller: controller, remaining: rest,
-                           accumulated: accumulated + [.failure(e)],
+                           accumulated: accumulated + [UploadTaskResult(task: task, result: .failure(e))],
                            onCompletion: onCompletion)
             return
         } catch {
             controller.incrementCompleted()
             __runTaskQueue(controller: controller, remaining: rest,
-                           accumulated: accumulated + [.failure(.unknown(error))],
+                           accumulated: accumulated + [UploadTaskResult(task: task, result: .failure(.unknown(error)))],
                            onCompletion: onCompletion)
             return
         }
@@ -525,13 +525,13 @@ public extension APIClient {
         } catch let e as NetworkError {
             controller.incrementCompleted()
             __runTaskQueue(controller: controller, remaining: rest,
-                           accumulated: accumulated + [.failure(e)],
+                           accumulated: accumulated + [UploadTaskResult(task: task, result: .failure(e))],
                            onCompletion: onCompletion)
             return
         } catch {
             controller.incrementCompleted()
             __runTaskQueue(controller: controller, remaining: rest,
-                           accumulated: accumulated + [.failure(.unknown(error))],
+                           accumulated: accumulated + [UploadTaskResult(task: task, result: .failure(.unknown(error)))],
                            onCompletion: onCompletion)
             return
         }
@@ -569,7 +569,7 @@ public extension APIClient {
             self.__runTaskQueue(
                 controller: controller,
                 remaining: rest,
-                accumulated: accumulated + [fileResult],
+                accumulated: accumulated + [UploadTaskResult(task: task, result: fileResult)],
                 onCompletion: onCompletion
             )
         }
@@ -579,16 +579,22 @@ public extension APIClient {
 
 // MARK: - UploadTaskQueueCompletion
 
-/// Completion type for `uploadTaskQueue` — carries remaining `UploadTask`
-/// objects (not just `UploadItem`) so all per-task metadata is preserved on pause.
+/// Completion type for `uploadTaskQueue`.
+/// Every attempted file is available as an `UploadTaskResult`
+/// pairing the original `UploadTask` with its `Result<T, NetworkError>`.
 public struct UploadTaskQueueCompletion<T: Decodable> {
 
-    public let attempted: UploadBatchResult<T>
+    // MARK: - Primary: task-aware results
 
-    /// Tasks that were never started, with their original fields intact.
+    /// Results for every file that was attempted, in upload order.
+    /// Each entry gives you the original `UploadTask` AND its result.
+    public let attemptedTasks: [UploadTaskResult<T>]
+
+    /// Tasks that were queued but never started (cancelled or paused mid-batch).
     /// On `.paused` — pass directly back to `uploadTaskQueue` to resume.
     public let remainingTasks: [UploadTask]
 
+    /// Why the queue stopped.
     public let reason: StopReason
 
     public enum StopReason: Equatable {
@@ -597,8 +603,32 @@ public struct UploadTaskQueueCompletion<T: Decodable> {
         case paused
     }
 
+    // MARK: - Convenience computed properties
+
+    /// Tasks that uploaded successfully, with their decoded responses.
+    public var successes: [(task: UploadTask, response: T)] {
+        attemptedTasks.compactMap { item in
+            guard let response = item.response else { return nil }
+            return (task: item.task, response: response)
+        }
+    }
+
+    /// Tasks that failed, with their errors.
+    public var failures: [(task: UploadTask, error: NetworkError)] {
+        attemptedTasks.compactMap { item in
+            guard let error = item.error else { return nil }
+            return (task: item.task, error: error)
+        }
+    }
+
+    /// Raw results array (without task pairing) — for backwards compatibility.
+    public var attempted: UploadBatchResult<T> {
+        UploadBatchResult(results: attemptedTasks.map { $0.result })
+    }
+
+    /// True only when finished AND every attempted file succeeded.
     public var fullySucceeded: Bool {
-        reason == .finished && attempted.allSucceeded
+        reason == .finished && failures.isEmpty
     }
 }
 

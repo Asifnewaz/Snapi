@@ -67,6 +67,34 @@ public struct UploadProgressState {
     }
 }
 
+// MARK: - UploadTaskResult
+
+/// Pairs one `UploadTask` with its upload outcome.
+/// Available in `UploadTaskQueueCompletion.attemptedTasks`.
+public struct UploadTaskResult<T: Decodable> {
+
+    /// The original task — includes item, fields, fieldEncoding, fileFieldName.
+    public let task: UploadTask
+
+    /// The network result for this task.
+    public let result: Result<T, NetworkError>
+
+    /// Convenience: the decoded response if the upload succeeded.
+    public var response: T? {
+        if case .success(let v) = result { return v }
+        return nil
+    }
+
+    /// Convenience: the error if the upload failed.
+    public var error: NetworkError? {
+        if case .failure(let e) = result { return e }
+        return nil
+    }
+
+    /// True if this specific upload succeeded.
+    public var succeeded: Bool { response != nil }
+}
+
 // MARK: - UploadBatchResult
 
 /// The final outcome of a serial batch upload.
