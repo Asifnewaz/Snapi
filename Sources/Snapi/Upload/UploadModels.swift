@@ -17,16 +17,16 @@ public enum UploadItem {
     ///   - image: The source UIImage.
     ///   - fileName: Desired file name in the multipart form (e.g. "avatar.jpg").
     ///   - compressionQuality: JPEG compression 0.0 (most) to 1.0 (least). Default: 0.8.
-    case image(UIImage, fileName: String, compressionQuality: CGFloat)
+    case image(UIImage, id: Int,  fileName: String, compressionQuality: CGFloat)
 
     /// A local file referenced by URL.
     /// - Parameters:
     ///   - url: The file's local URL. Must be accessible.
     ///   - fileName: Override name; if nil, uses the URL's last path component.
-    case file(url: URL, fileName: String?)
+    case file(url: URL, id: Int,  fileName: String?)
 
     /// Raw `Data` with an explicit MIME type.
-    case data(Data, fileName: String, mimeType: String)
+    case data(Data, id: Int, fileName: String, mimeType: String)
 }
 
 // MARK: - UploadProgressState
@@ -170,6 +170,8 @@ public enum UploadFieldEncoding {
 /// ```
 public struct UploadTask {
 
+    public let id: Int
+    
     /// The file to upload.
     public let item: UploadItem
 
@@ -187,11 +189,13 @@ public struct UploadTask {
     public let fileFieldName: String
 
     public init(
+        id: Int,
         item: UploadItem,
         fields: [String: String]? = nil,
         fieldEncoding: UploadFieldEncoding = .multipartBody,
         fileFieldName: String = "file"
     ) {
+        self.id = id
         self.item          = item
         self.fields        = fields
         self.fieldEncoding = fieldEncoding

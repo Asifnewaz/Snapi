@@ -135,19 +135,20 @@ public enum UploadItemResolver {
 
     public struct ResolvedItem {
         public let data: Data
+        public let id :Int
         public let fileName: String
         public let mimeType: String
     }
 
     public static func resolve(_ item: UploadItem) throws -> ResolvedItem {
         switch item {
-        case .image(let image, let fileName, let quality):
+        case .image(let image, let id, let fileName, let quality):
             guard let data = image.jpegData(compressionQuality: quality) else {
                 throw NetworkError.uploadFailed("UIImage could not be compressed to JPEG for file: \(fileName)")
             }
-            return ResolvedItem(data: data, fileName: fileName, mimeType: "image/jpeg")
+            return ResolvedItem(data: data, id: id, fileName: fileName, mimeType: "image/jpeg")
 
-        case .file(let url, let customName):
+        case .file(let url, let id, let customName):
             guard FileManager.default.fileExists(atPath: url.path) else {
                 throw NetworkError.fileReadFailed(url)
             }
@@ -155,13 +156,13 @@ public enum UploadItemResolver {
                 let data = try Data(contentsOf: url)
                 let name = customName ?? url.lastPathComponent
                 let mime = MIMEType.from(url: url)
-                return ResolvedItem(data: data, fileName: name, mimeType: mime)
+                return ResolvedItem(data: data,id: id, fileName: name, mimeType: mime)
             } catch {
                 throw NetworkError.fileReadFailed(url)
             }
 
-        case .data(let rawData, let fileName, let mimeType):
-            return ResolvedItem(data: rawData, fileName: fileName, mimeType: mimeType)
+        case .data(let rawData, let id, let fileName, let mimeType):
+            return ResolvedItem(data: rawData,id: id, fileName: fileName, mimeType: mimeType)
         }
     }
 }
