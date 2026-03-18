@@ -383,14 +383,15 @@ public extension APIClient {
         tasks: [UploadTask],
         headers: [String: String]? = nil,
         onProgress: ((UploadProgressState) -> Void)? = nil,
+        onItemCompletion: ((UploadTaskResult<T>) -> Void)? = nil,
         onCompletion: @escaping (UploadTaskQueueCompletion<T>) -> Void
     ) -> UploadQueueController<T> {
 
         let config = UploadConfig(
             path: path,
-            additionalFields: nil,   // not used — each task has its own fields
+            additionalFields: nil,
             headers: headers,
-            fileFieldName: "file"    // not used — each task has its own fileFieldName
+            fileFieldName: "file"
         )
 
         let controller = UploadQueueController<T>(
@@ -398,14 +399,15 @@ public extension APIClient {
             totalCount: tasks.count,
             config: config,
             onProgress: onProgress,
-            onCompletion: { _ in }   // unused — task queue has its own completion type
+            onCompletion: { _ in }
         )
 
         controller.setUploading()
         _runTaskQueue(
             controller: controller,
             remaining: tasks,
-            accumulated: [],  // [UploadTaskResult<T>]
+            accumulated: [],
+            onItemCompletion: onItemCompletion,
             onCompletion: onCompletion
         )
         return controller
@@ -417,6 +419,7 @@ public extension APIClient {
         controller: UploadQueueController<T>,
         remaining: [UploadTask],
         accumulated: [UploadTaskResult<T>],
+        onItemCompletion: ((UploadTaskResult<T>) -> Void)?,
         onCompletion: @escaping (UploadTaskQueueCompletion<T>) -> Void
     ) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -425,6 +428,7 @@ public extension APIClient {
                 controller: controller,
                 remaining: remaining,
                 accumulated: accumulated,
+                onItemCompletion: onItemCompletion,
                 onCompletion: onCompletion
             )
         }
@@ -434,6 +438,7 @@ public extension APIClient {
         controller: UploadQueueController<T>,
         remaining: [UploadTask],
         accumulated: [UploadTaskResult<T>],
+        onItemCompletion: ((UploadTaskResult<T>) -> Void)?,
         onCompletion: @escaping (UploadTaskQueueCompletion<T>) -> Void
     ) {
         // ── Check stop flag before each new file ───────────────────────
@@ -478,15 +483,21 @@ public extension APIClient {
         do {
             resolved = try UploadItemResolver.resolve(task.item)
         } catch let e as NetworkError {
+            let taskResult = UploadTaskResult(task: task, result: Result<T, NetworkError>.failure(e))
             controller.incrementCompleted()
+            DispatchQueue.main.async { onItemCompletion?(taskResult) }
             __runTaskQueue(controller: controller, remaining: rest,
-                           accumulated: accumulated + [UploadTaskResult(task: task, result: .failure(e))],
+                           accumulated: accumulated + [taskResult],
+                           onItemCompletion: onItemCompletion,
                            onCompletion: onCompletion)
             return
         } catch {
+            let taskResult = UploadTaskResult(task: task, result: Result<T, NetworkError>.failure(.unknown(error)))
             controller.incrementCompleted()
+            DispatchQueue.main.async { onItemCompletion?(taskResult) }
             __runTaskQueue(controller: controller, remaining: rest,
-                           accumulated: accumulated + [UploadTaskResult(task: task, result: .failure(.unknown(error)))],
+                           accumulated: accumulated + [taskResult],
+                           onItemCompletion: onItemCompletion,
                            onCompletion: onCompletion)
             return
         }
@@ -523,15 +534,21 @@ public extension APIClient {
                 headers: cfg.headers
             )
         } catch let e as NetworkError {
+            let taskResult = UploadTaskResult(task: task, result: Result<T, NetworkError>.failure(e))
             controller.incrementCompleted()
+            DispatchQueue.main.async { onItemCompletion?(taskResult) }
             __runTaskQueue(controller: controller, remaining: rest,
-                           accumulated: accumulated + [UploadTaskResult(task: task, result: .failure(e))],
+                           accumulated: accumulated + [taskResult],
+                           onItemCompletion: onItemCompletion,
                            onCompletion: onCompletion)
             return
         } catch {
+            let taskResult = UploadTaskResult(task: task, result: Result<T, NetworkError>.failure(.unknown(error)))
             controller.incrementCompleted()
+            DispatchQueue.main.async { onItemCompletion?(taskResult) }
             __runTaskQueue(controller: controller, remaining: rest,
-                           accumulated: accumulated + [UploadTaskResult(task: task, result: .failure(.unknown(error)))],
+                           accumulated: accumulated + [taskResult],
+                           onItemCompletion: onItemCompletion,
                            onCompletion: onCompletion)
             return
         }
@@ -564,12 +581,17 @@ public extension APIClient {
                 fileResult = self.processResponse(data: data, response: response)
             }
 
+            let taskResult = UploadTaskResult(task: task, result: fileResult)
             controller.incrementCompleted()
+
+            // Notify caller this individual file is done (success or failure)
+            DispatchQueue.main.async { onItemCompletion?(taskResult) }
 
             self.__runTaskQueue(
                 controller: controller,
                 remaining: rest,
-                accumulated: accumulated + [UploadTaskResult(task: task, result: fileResult)],
+                accumulated: accumulated + [taskResult],
+                onItemCompletion: onItemCompletion,
                 onCompletion: onCompletion
             )
         }
