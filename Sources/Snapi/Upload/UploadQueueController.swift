@@ -383,6 +383,7 @@ public extension APIClient {
         tasks: [UploadTask],
         headers: [String: String]? = nil,
         onProgress: ((UploadProgressState) -> Void)? = nil,
+        onItemProgress: ((UploadTask, Double) -> Void)? = nil,
         onItemCompletion: ((UploadTaskResult<T>) -> Void)? = nil,
         onCompletion: @escaping (UploadTaskQueueCompletion<T>) -> Void
     ) -> UploadQueueController<T> {
@@ -407,6 +408,7 @@ public extension APIClient {
             controller: controller,
             remaining: tasks,
             accumulated: [],
+            onItemProgress: onItemProgress,
             onItemCompletion: onItemCompletion,
             onCompletion: onCompletion
         )
@@ -419,6 +421,7 @@ public extension APIClient {
         controller: UploadQueueController<T>,
         remaining: [UploadTask],
         accumulated: [UploadTaskResult<T>],
+        onItemProgress: ((UploadTask, Double) -> Void)?,
         onItemCompletion: ((UploadTaskResult<T>) -> Void)?,
         onCompletion: @escaping (UploadTaskQueueCompletion<T>) -> Void
     ) {
@@ -428,6 +431,7 @@ public extension APIClient {
                 controller: controller,
                 remaining: remaining,
                 accumulated: accumulated,
+                onItemProgress: onItemProgress,
                 onItemCompletion: onItemCompletion,
                 onCompletion: onCompletion
             )
@@ -438,6 +442,7 @@ public extension APIClient {
         controller: UploadQueueController<T>,
         remaining: [UploadTask],
         accumulated: [UploadTaskResult<T>],
+        onItemProgress: ((UploadTask, Double) -> Void)?,
         onItemCompletion: ((UploadTaskResult<T>) -> Void)?,
         onCompletion: @escaping (UploadTaskQueueCompletion<T>) -> Void
     ) {
@@ -488,6 +493,7 @@ public extension APIClient {
             DispatchQueue.main.async { onItemCompletion?(taskResult) }
             __runTaskQueue(controller: controller, remaining: rest,
                            accumulated: accumulated + [taskResult],
+                           onItemProgress: onItemProgress,
                            onItemCompletion: onItemCompletion,
                            onCompletion: onCompletion)
             return
@@ -497,6 +503,7 @@ public extension APIClient {
             DispatchQueue.main.async { onItemCompletion?(taskResult) }
             __runTaskQueue(controller: controller, remaining: rest,
                            accumulated: accumulated + [taskResult],
+                           onItemProgress: onItemProgress,
                            onItemCompletion: onItemCompletion,
                            onCompletion: onCompletion)
             return
@@ -539,6 +546,7 @@ public extension APIClient {
             DispatchQueue.main.async { onItemCompletion?(taskResult) }
             __runTaskQueue(controller: controller, remaining: rest,
                            accumulated: accumulated + [taskResult],
+                           onItemProgress: onItemProgress,
                            onItemCompletion: onItemCompletion,
                            onCompletion: onCompletion)
             return
@@ -548,6 +556,7 @@ public extension APIClient {
             DispatchQueue.main.async { onItemCompletion?(taskResult) }
             __runTaskQueue(controller: controller, remaining: rest,
                            accumulated: accumulated + [taskResult],
+                           onItemProgress: onItemProgress,
                            onItemCompletion: onItemCompletion,
                            onCompletion: onCompletion)
             return
@@ -557,7 +566,11 @@ public extension APIClient {
         let startTime = Date()
 
         // ── Execute ────────────────────────────────────────────────────
-        let uploadTask = session.api_uploadTask(with: request, from: bodyData) { [weak self] data, response, err in
+        // Use ProgressUploadSession when onItemProgress is set (real byte-level
+        // progress requires a delegate-based URLSession, not a completion handler).
+        // Fall back to the injected session when no per-item progress is needed.
+
+        let handleResult: (Data?, URLResponse?, Error?) -> Void = { [weak self] data, response, err in
             guard let self = self else { return }
 
             self.logger.logResponse(for: request, response: response,
@@ -591,11 +604,35 @@ public extension APIClient {
                 controller: controller,
                 remaining: rest,
                 accumulated: accumulated + [taskResult],
+                onItemProgress: onItemProgress,
                 onItemCompletion: onItemCompletion,
                 onCompletion: onCompletion
             )
         }
-        uploadTask.resume()
+
+        if let onItemProgress = onItemProgress {
+            // Real byte-level progress via delegate-based session
+            ProgressUploadSession.upload(
+                request: request,
+                bodyData: bodyData,
+                onProgress: { progress in
+                    // Also feed into the overall onProgress batch tracker
+                    controller.deliverProgress(UploadProgressState(
+                        currentFileIndex: fileIndex,
+                        totalFiles: total,
+                        currentFileProgress: progress,
+                        currentFileName: resolved.fileName
+                    ))
+                    onItemProgress(task, progress)
+                },
+                onCompletion: handleResult
+            )
+        } else {
+            // No per-item progress needed — use injected session (testable)
+            let uploadTask = session.api_uploadTask(with: request, from: bodyData,
+                                                completionHandler: handleResult)
+            uploadTask.resume()
+        }
     }
 }
 
