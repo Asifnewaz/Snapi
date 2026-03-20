@@ -1,69 +1,158 @@
-//
-//  SnapiUploadDelegate.swift
-//  Snapi
-//
-//  Created by Asif Newaz on 19.03.26.
-//
-
-
 // SnapiUploadDelegate.swift
 // Snapi
 //
-// URLSessionTaskDelegate that delivers real byte-level upload progress
-// per file. Used internally by __runTaskQueue when onItemProgress is set.
+// Smooth per-item upload progress using a chunked InputStream.
 //
-// Each upload task gets its own SnapiUploadDelegate instance.
-// The delegate is retained by the URLSession until the task completes.
+// WHY NOT didSendBodyData:
+// URLSessionTaskDelegate.didSendBodyData fires at the TCP/network layer —
+// for small files on fast connections, iOS sends all bytes in one burst,
+// so the callback fires only once (100%). Not useful as a progress indicator.
+//
+// THE FIX — ChunkedInputStream + uploadTask(withStreamedRequest:):
+// We stream the multipart body in fixed-size chunks (default 64 KB).
+// Progress is reported after each chunk is read from the stream, giving
+// smooth 0.0 → 0.1 → 0.2 → ... → 1.0 regardless of network speed or
+// file size.
 
 import Foundation
 
-// MARK: - SnapiUploadDelegate
+// MARK: - ChunkedInputStream
 
-/// Handles progress + completion for a single URLSession upload task.
-/// Bridges the delegate-based URLSession API back into a closure-based interface.
-final class SnapiUploadDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate {
+/// Wraps a Data buffer and reads it in fixed-size chunks.
+/// Reports progress to a closure after each chunk is consumed.
+final class ChunkedInputStream: InputStream {
 
-    // MARK: - Closures
+    // MARK: - Config
 
-    /// Called repeatedly as bytes are sent. progress: 0.0 → 1.0.
-    var onProgress: ((Double) -> Void)?
-
-    /// Called once when the task finishes (data, response, error).
-    var onCompletion: ((Data?, URLResponse?, Error?) -> Void)?
+    /// Bytes read per chunk. Smaller = more progress callbacks, more overhead.
+    /// 64 KB is a good balance for most image sizes.
+    static let defaultChunkSize = 65_536  // 64 KB
 
     // MARK: - Private
 
-    private var receivedData = Data()
+    private let data:      Data
+    private let chunkSize: Int
+    private var offset:    Int = 0
 
-    // MARK: - URLSessionTaskDelegate — progress
+    private var _streamStatus: Stream.Status = .notOpen
+    private var _streamError:  Error?        = nil
 
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        didSendBodyData bytesSent: Int64,
-        totalBytesSent: Int64,
-        totalBytesExpectedToSend: Int64
-    ) {
-        guard totalBytesExpectedToSend > 0 else { return }
-        let progress = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
+    /// Called on URLSession's internal queue after each chunk.
+    /// Reports fraction of bytes read so far (0.0 → 1.0).
+    var onProgress: ((Double) -> Void)?
+
+    // MARK: - Init
+
+    init(data: Data, chunkSize: Int = ChunkedInputStream.defaultChunkSize) {
+        self.data      = data
+        self.chunkSize = chunkSize
+        super.init(data: data)   // required — superclass needs a valid init
+    }
+
+    // MARK: - InputStream overrides
+
+    override var streamStatus: Stream.Status { _streamStatus }
+    override var streamError:  Error?        { _streamError  }
+
+    override func open() {
+        _streamStatus = .open
+        offset        = 0
+    }
+
+    override func close() {
+        _streamStatus = .closed
+    }
+
+    override var hasBytesAvailable: Bool {
+        offset < data.count
+    }
+
+    override func read(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
+        guard offset < data.count else { return 0 }
+
+        let remaining  = data.count - offset
+        let toRead     = min(min(len, chunkSize), remaining)
+
+        data.copyBytes(to: buffer, from: offset ..< offset + toRead)
+        offset += toRead
+
+        // Report progress after each chunk
+        let progress = Double(offset) / Double(data.count)
         DispatchQueue.main.async { [weak self] in
             self?.onProgress?(min(1.0, progress))
         }
+
+        return toRead
     }
 
-    // MARK: - URLSessionDataDelegate — collect response body
+    override func getBuffer(
+        _ buffer: UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>,
+        length len: UnsafeMutablePointer<Int>
+    ) -> Bool {
+        return false   // We do not support zero-copy buffer access
+    }
+}
 
+// MARK: - SnapiUploadDelegate
+
+/// URLSession delegate that collects response data and fires the completion closure.
+/// Progress is reported by ChunkedInputStream — not by this delegate.
+final class SnapiUploadDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate {
+
+    var onCompletion: ((Data?, URLResponse?, Error?) -> Void)?
+
+    private var receivedData = Data()
+
+    // Collect response body pieces
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         receivedData.append(data)
     }
 
-    // MARK: - URLSessionTaskDelegate — completion
-
+    // Task finished
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        let response  = task.response
-        let data      = receivedData.isEmpty ? nil : receivedData
-        let captured  = onCompletion
-        // Fire on a background queue — caller dispatches to main
+        let response = task.response
+        let data     = receivedData.isEmpty ? nil : receivedData
+        let captured = onCompletion
+        DispatchQueue.global(qos: .userInitiated).async {
+            captured?(data, response, error)
+        }
+    }
+}
+
+// MARK: - SnapiStreamDelegate
+
+/// Provides the body stream to URLSession for uploadTask(withStreamedRequest:).
+final class SnapiStreamDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate {
+
+    let stream:      ChunkedInputStream
+    var onCompletion: ((Data?, URLResponse?, Error?) -> Void)?
+
+    private var receivedData = Data()
+
+    init(stream: ChunkedInputStream) {
+        self.stream = stream
+    }
+
+    // URLSession asks for the body stream
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        needNewBodyStream completionHandler: @escaping (InputStream?) -> Void
+    ) {
+        stream.open()
+        completionHandler(stream)
+    }
+
+    // Collect response body
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        receivedData.append(data)
+    }
+
+    // Task finished
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        let response = task.response
+        let data     = receivedData.isEmpty ? nil : receivedData
+        let captured = onCompletion
         DispatchQueue.global(qos: .userInitiated).async {
             captured?(data, response, error)
         }
@@ -72,44 +161,56 @@ final class SnapiUploadDelegate: NSObject, URLSessionTaskDelegate, URLSessionDat
 
 // MARK: - ProgressUploadSession
 
-/// Creates a one-shot URLSession backed by a SnapiUploadDelegate.
-/// Each file upload gets its own session so delegates don't cross-contaminate.
+/// One-shot upload with smooth chunked progress.
 ///
-/// The session is invalidated automatically after the task completes.
+/// When `onProgress` is provided, the body is streamed through
+/// `ChunkedInputStream` using `uploadTask(withStreamedRequest:)`.
+/// Progress is reported after each 64 KB chunk regardless of network speed.
+///
+/// When `onProgress` is nil, falls back to the standard
+/// `uploadTask(with:from:)` completion-handler form.
 struct ProgressUploadSession {
 
-    /// Executes a single upload with real byte-level progress.
-    ///
-    /// - Parameters:
-    ///   - request: The fully-built URLRequest (Content-Type already set).
-    ///   - bodyData: The multipart body data.
-    ///   - onProgress: Called on main queue with 0.0 → 1.0 as bytes are sent.
-    ///   - onCompletion: Called on background queue when done (data, response, error).
     static func upload(
         request: URLRequest,
         bodyData: Data,
         onProgress: ((Double) -> Void)?,
         onCompletion: @escaping (Data?, URLResponse?, Error?) -> Void
     ) {
-        let delegate = SnapiUploadDelegate()
-        delegate.onProgress   = onProgress
+        guard let onProgress = onProgress else {
+            // No progress needed — simple completion-handler upload
+            let delegate = SnapiUploadDelegate()
+            delegate.onCompletion = onCompletion
+            let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+            session.uploadTask(with: request, from: bodyData) { data, response, error in
+                onCompletion(data, response, error)
+                session.invalidateAndCancel()
+            }.resume()
+            return
+        }
+
+        // Chunked stream upload for smooth progress
+        let stream = ChunkedInputStream(data: bodyData)
+        stream.onProgress = onProgress
+
+        let delegate = SnapiStreamDelegate(stream: stream)
         delegate.onCompletion = { data, response, error in
             onCompletion(data, response, error)
         }
 
-        // Each upload gets its own ephemeral session tied to the delegate
+        var streamedRequest       = request
+        streamedRequest.httpBody  = nil   // body comes from the stream
+
         let session = URLSession(
             configuration: .default,
             delegate: delegate,
-            delegateQueue: nil      // nil = URLSession's own serial queue
+            delegateQueue: nil
         )
 
-        // Use the non-completion-handler form — delegate receives everything
-        let task = session.uploadTask(with: request, from: bodyData)
+        // uploadTask(withStreamedRequest:) asks delegate for the stream
+        // via needNewBodyStream — SnapiStreamDelegate provides our ChunkedInputStream
+        let task = session.uploadTask(withStreamedRequest: streamedRequest)
         task.resume()
-
-        // Invalidate after completion so the session doesn't linger
-        // finishTasksAndInvalidate waits for the task to complete first
         session.finishTasksAndInvalidate()
     }
 }
