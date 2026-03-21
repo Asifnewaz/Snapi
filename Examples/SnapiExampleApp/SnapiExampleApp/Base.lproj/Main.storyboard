@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="21701" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="BYZ-38-t0r">
+    <device id="retina6_12" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="21678"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="System colors in document resources" minToolsVersion="11.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <!--View Controller-->
+        <scene sceneID="tne-QT-ifu">
+            <objects>
+                <viewController id="BYZ-38-t0r" customClass="ViewController" customModuleProvider="target" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="8bC-Xf-vdC">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="getButton">
+                                <rect key="frame" x="20" y="80" width="353" height="60"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" constant="60" id="getButtonHeight"/>
+                                </constraints>
+                                <state key="normal" title="Button"/>
+                                <buttonConfiguration key="configuration" style="filled" title="📥 Test GET Request">
+                                    <fontDescription key="titleFontDescription" type="boldSystem" pointSize="18"/>
+                                </buttonConfiguration>
+                                <connections>
+                                    <action selector="testGetRequest:" target="BYZ-38-t0r" eventType="touchUpInside" id="getButtonAction"/>
+                                </connections>
+                            </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="postButton">
+                                <rect key="frame" x="20" y="160" width="353" height="60"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" constant="60" id="postButtonHeight"/>
+                                </constraints>
+                                <state key="normal" title="Button"/>
+                                <buttonConfiguration key="configuration" style="filled" title="📤 Test POST Request">
+                                    <fontDescription key="titleFontDescription" type="boldSystem" pointSize="18"/>
+                                </buttonConfiguration>
+                                <connections>
+                                    <action selector="testPostRequest:" target="BYZ-38-t0r" eventType="touchUpInside" id="postButtonAction"/>
+                                </connections>
+                            </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="uploadButton">
+                                <rect key="frame" x="20" y="240" width="353" height="60"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" constant="60" id="uploadButtonHeight"/>
+                                </constraints>
+                                <state key="normal" title="Button"/>
+                                <buttonConfiguration key="configuration" style="filled" title="📁 Test File Upload">
+                                    <fontDescription key="titleFontDescription" type="boldSystem" pointSize="18"/>
+                                </buttonConfiguration>
+                                <connections>
+                                    <action selector="testFileUpload:" target="BYZ-38-t0r" eventType="touchUpInside" id="uploadButtonAction"/>
+                                </connections>
+                            </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="downloadButton">
+                                <rect key="frame" x="20" y="320" width="353" height="60"/>
+                                <constraints>
+                                    <constraint firstAttribute="height" constant="60" id="downloadButtonHeight"/>
+                                </constraints>
+                                <state key="normal" title="Button"/>
+                                <buttonConfiguration key="configuration" style="filled" title="🖼️ Test Image Download">
+                                    <fontDescription key="titleFontDescription" type="boldSystem" pointSize="18"/>
+                                </buttonConfiguration>
+                                <connections>
+                                    <action selector="testImageDownload:" target="BYZ-38-t0r" eventType="touchUpInside" id="downloadButtonAction"/>
+                                </connections>
+                            </button>
+                            <textView clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleToFill" editable="NO" textAlignment="natural" translatesAutoresizingMaskIntoConstraints="NO" id="logTextView">
+                                <rect key="frame" x="20" y="400" width="353" height="418"/>
+                                <color key="backgroundColor" systemColor="secondarySystemBackgroundColor"/>
+                                <string key="text">Ready to test Snapi networking library...
+
+Tap buttons above to test different API operations.</string>
+                                <color key="textColor" systemColor="labelColor"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                <textInputTraits key="textInputTraits" autocapitalizationType="sentences"/>
+                            </textView>
+                        </subviews>
+                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
+                        <constraints>
+                            <constraint firstItem="getButton" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" constant="20" id="getButtonLeading"/>
+                            <constraint firstItem="6Tk-OE-BBY" firstAttribute="trailing" secondItem="getButton" secondAttribute="trailing" constant="20" id="getButtonTrailing"/>
+                            <constraint firstItem="getButton" firstAttribute="top" secondItem="6Tk-OE-BBY" secondAttribute="top" constant="21" id="getButtonTop"/>
+                            <constraint firstItem="postButton" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" constant="20" id="postButtonLeading"/>
+                            <constraint firstItem="6Tk-OE-BBY" firstAttribute="trailing" secondItem="postButton" secondAttribute="trailing" constant="20" id="postButtonTrailing"/>
+                            <constraint firstItem="postButton" firstAttribute="top" secondItem="getButton" secondAttribute="bottom" constant="20" id="postButtonTop"/>
+                            <constraint firstItem="uploadButton" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" constant="20" id="uploadButtonLeading"/>
+                            <constraint firstItem="6Tk-OE-BBY" firstAttribute="trailing" secondItem="uploadButton" secondAttribute="trailing" constant="20" id="uploadButtonTrailing"/>
+                            <constraint firstItem="uploadButton" firstAttribute="top" secondItem="postButton" secondAttribute="bottom" constant="20" id="uploadButtonTop"/>
+                            <constraint firstItem="downloadButton" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" constant="20" id="downloadButtonLeading"/>
+                            <constraint firstItem="6Tk-OE-BBY" firstAttribute="trailing" secondItem="downloadButton" secondAttribute="trailing" constant="20" id="downloadButtonTrailing"/>
+                            <constraint firstItem="downloadButton" firstAttribute="top" secondItem="uploadButton" secondAttribute="bottom" constant="20" id="downloadButtonTop"/>
+                            <constraint firstItem="logTextView" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" constant="20" id="logTextViewLeading"/>
+                            <constraint firstItem="6Tk-OE-BBY" firstAttribute="trailing" secondItem="logTextView" secondAttribute="trailing" constant="20" id="logTextViewTrailing"/>
+                            <constraint firstItem="logTextView" firstAttribute="top" secondItem="downloadButton" secondAttribute="bottom" constant="20" id="logTextViewTop"/>
+                            <constraint firstItem="6Tk-OE-BBY" firstAttribute="bottom" secondItem="logTextView" secondAttribute="bottom" id="logTextViewBottom"/>
+                        </constraints>
+                        <viewLayoutMarginsGuide key="safeArea" id="6Tk-OE-BBY"/>
+                    </view>
+                    <connections>
+                        <outlet property="logTextView" destination="logTextView" id="logTextViewOutlet"/>
+                    </connections>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="20" y="20"/>
+        </scene>
+    </scenes>
+    <resources>
+        <systemColor name="labelColor">
+            <color white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+        </systemColor>
+        <systemColor name="secondarySystemBackgroundColor">
+            <color red="0.94901960784313721" green="0.94901960784313721" blue="0.96862745098039216" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+        </systemColor>
+        <systemColor name="systemBackgroundColor">
+            <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+        </systemColor>
+    </resources>
+</document>
