@@ -3,9 +3,6 @@
 //
 // Smooth per-item upload progress using bound stream pairs.
 //
-// WHY NOT subclass InputStream:
-// NSInputStream is an Objective-C abstract class cluster. Subclassing it
-// directly causes "-setDelegate: only defined for abstract class" at runtime.
 //
 // THE FIX — Stream.getBoundStreams():
 // Foundation gives us a paired (InputStream, OutputStream).
